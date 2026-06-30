@@ -8,6 +8,7 @@
 - OpenAI AI 回复。
 - 可配置多个 GPT 模型，并按群/频道切换当前模型。
 - 插件式命令注册：新闻、投票、模型、搜索、活跃榜等命令可独立扩展。
+- 群内简单配置入口：`/config` 查看和修改当前群配置。
 - 群聊触发规则：`mention_or_reply`、`always`、`command_only`。
 - SQLite 保存最近上下文。
 - 群白名单，避免机器人被拉到陌生群后被滥用。
@@ -70,6 +71,8 @@ PYTHONPATH=src python -m group_chat_bot
 /leaderboard
 /models
 /model gpt-4.1
+/config
+/config language ko
 ```
 
 也可以直接回复机器人的消息继续对话。
@@ -147,8 +150,27 @@ OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
 | `poll` | `/poll` |
 | `leaderboard` | `/leaderboard` |
 | `model` | `/model`、`/models` |
+| `config` | `/config` |
 
 新增命令时，优先新增一个 `CommandPlugin`，再把业务方法放到 `GroupChatBot` 或独立模块里，避免继续堆大段命令分支。
+
+## 群内配置
+
+`/config` 是当前群/频道的简单配置入口，不会显示或修改 `TELEGRAM_BOT_TOKEN`、`OPENAI_API_KEY` 这类敏感配置。
+
+```text
+/config
+/config language auto
+/config language zh
+/config language en
+/config language ko
+/config language tr
+/config language reset
+/config model gpt-4.1
+/config model reset
+```
+
+这些配置会存进 SQLite，重启后仍然有效。全局配置仍然通过 `.env` 管理。
 
 ## 自主回复和新闻
 

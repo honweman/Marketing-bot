@@ -1,6 +1,14 @@
 from types import SimpleNamespace
 
-from group_chat_bot.bot import GroupChatBot, IncomingMessage, parse_command, parse_message, parse_poll_args, split_keywords
+from group_chat_bot.bot import (
+    GroupChatBot,
+    IncomingMessage,
+    normalize_config_language,
+    parse_command,
+    parse_message,
+    parse_poll_args,
+    split_keywords,
+)
 from group_chat_bot.plugins import DEFAULT_COMMANDS, CommandPlugin
 from group_chat_bot.storage import ConversationStore
 from group_chat_bot.telegram_api import TelegramClient
@@ -15,7 +23,9 @@ def test_parse_command_with_username():
     assert parse_command("/leaderboard", "my_bot") == ("leaderboard", "")
     assert parse_command("/models", "my_bot") == ("models", "")
     assert parse_command("/model gpt-4.1", "my_bot") == ("model", "gpt-4.1")
+    assert parse_command("/config language ko", "my_bot") == ("config", "language ko")
     assert "news" in DEFAULT_COMMANDS
+    assert "config" in DEFAULT_COMMANDS
     assert parse_command("/custom run", "my_bot") == (None, "")
     assert parse_command("/custom run", "my_bot", {"custom"}) == ("custom", "run")
 
@@ -172,3 +182,65 @@ def test_custom_plugin_command_routes_from_update(tmp_path):
     )
 
     assert bot.telegram.messages == [{"chat_id": -1001, "text": "custom:hello:en"}]
+
+
+def test_config_command_updates_chat_settings(tmp_path):
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+
+        def send_message(self, chat_id, text, reply_to_message_id=None, parse_mode=None):
+            self.messages.append({"chat_id": chat_id, "text": text})
+
+    settings = SimpleNamespace(
+        openai_model="gpt-4.1-mini",
+        openai_allowed_models=["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+        bot_username="my_bot",
+        default_language="auto",
+        chat_language_mode="auto",
+        chat_language_overrides={},
+        max_context_messages=12,
+        trigger_mode="mention_or_reply",
+        autonomous_reply=False,
+        news_enabled=False,
+    )
+    telegram = FakeTelegram()
+    bot = GroupChatBot(
+        settings=settings,
+        telegram=telegram,
+        ai=object(),
+        store=ConversationStore(tmp_path / "bot.sqlite3"),
+    )
+    message = IncomingMessage(
+        chat_id=-1001,
+        chat_type="supergroup",
+        message_id=11,
+        text="/config",
+        user_name="alice",
+        reply_to_bot=False,
+        user_id=7,
+    )
+
+    bot.handle_config_command(message, "config", "", "en")
+    assert "Current settings" in telegram.messages[-1]["text"]
+
+    bot.handle_config_command(message, "config", "language ko", "en")
+    assert bot.language_for_chat(-1001) == "ko"
+    assert bot.configured_language_label(-1001) == "ko"
+
+    bot.handle_config_command(message, "config", "language invalid", "en")
+    assert bot.language_for_chat(-1001) == "ko"
+    assert "Unsupported language" in telegram.messages[-1]["text"]
+
+    bot.handle_config_command(message, "config", "model gpt-4o-mini", "en")
+    assert bot.model_for_chat(-1001) == "gpt-4o-mini"
+
+    bot.handle_config_command(message, "config", "language reset", "en")
+    assert bot.configured_language_label(-1001) == "auto"
+
+
+def test_normalize_config_language_rejects_unknown():
+    assert normalize_config_language("ko") == "ko"
+    assert normalize_config_language("turkish") == "tr"
+    assert normalize_config_language("auto") == "auto"
+    assert normalize_config_language("not-a-language") is None

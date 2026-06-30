@@ -86,6 +86,14 @@ def build_default_plugins() -> list[CommandPlugin]:
             ),
             description="Per-chat GPT model switching.",
         ),
+        CommandPlugin(
+            name="config",
+            commands=("config",),
+            handler=lambda bot, message, command, arg, language: bot.handle_config_command(
+                message, command, arg, language
+            ),
+            description="Per-chat settings entry point.",
+        ),
     ]
 
 

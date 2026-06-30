@@ -28,6 +28,7 @@ LOCALIZED = {
 /leaderboard - 查看活跃榜
 /model [模型名|reset] - 查看或切换本群 GPT 模型
 /models - 查看可用 GPT 模型
+/config - 查看或修改本群配置
 
 群聊默认触发方式：
 1. @机器人 你的问题
@@ -47,6 +48,7 @@ LOCALIZED = {
 /leaderboard - Show active members
 /model [model|reset] - Show or switch this chat's GPT model
 /models - Show available GPT models
+/config - Show or change this chat's settings
 
 Default group triggers:
 1. @mention the bot
@@ -66,6 +68,7 @@ Default group triggers:
 /leaderboard - 활발한 멤버 보기
 /model [모델|reset] - 이 채팅의 GPT 모델 보기 또는 변경
 /models - 사용 가능한 GPT 모델 보기
+/config - 이 채팅 설정 보기 또는 변경
 
 기본 그룹 호출 방식:
 1. 봇을 @멘션
@@ -85,6 +88,7 @@ Default group triggers:
 /leaderboard - Aktif üyeleri göster
 /model [model|reset] - Bu sohbetin GPT modelini göster veya değiştir
 /models - Kullanılabilir GPT modellerini göster
+/config - Bu sohbetin ayarlarını göster veya değiştir
 
 Varsayılan grup tetikleyicileri:
 1. Botu @etiketle
@@ -205,6 +209,42 @@ Varsayılan grup tetikleyicileri:
         "en": "This model is not allowed: {model}\nAvailable models: {models}",
         "ko": "이 모델은 허용되지 않습니다: {model}\n사용 가능한 모델: {models}",
         "tr": "Bu modele izin verilmiyor: {model}\nKullanılabilir modeller: {models}",
+    },
+    "config_status": {
+        "zh": "当前配置：\nchat_id: {chat_id}\n语言：{language}\n模型：{model}\n触发模式：{trigger_mode}\n主动回复：{autonomous_reply}\n定时新闻：{news_enabled}\n\n可用命令：\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 模型名\n/config model reset",
+        "en": "Current settings:\nchat_id: {chat_id}\nLanguage: {language}\nModel: {model}\nTrigger mode: {trigger_mode}\nAutonomous reply: {autonomous_reply}\nScheduled news: {news_enabled}\n\nCommands:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-name\n/config model reset",
+        "ko": "현재 설정:\nchat_id: {chat_id}\n언어: {language}\n모델: {model}\n호출 모드: {trigger_mode}\n자율 응답: {autonomous_reply}\n예약 뉴스: {news_enabled}\n\n명령:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 모델명\n/config model reset",
+        "tr": "Mevcut ayarlar:\nchat_id: {chat_id}\nDil: {language}\nModel: {model}\nTetikleme modu: {trigger_mode}\nOtonom yanıt: {autonomous_reply}\nPlanlı haber: {news_enabled}\n\nKomutlar:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-adı\n/config model reset",
+    },
+    "config_language_current": {
+        "zh": "当前语言配置：{language}",
+        "en": "Current language setting: {language}",
+        "ko": "현재 언어 설정: {language}",
+        "tr": "Mevcut dil ayarı: {language}",
+    },
+    "config_language_set": {
+        "zh": "已设置本群语言：{language}",
+        "en": "This chat language is now: {language}",
+        "ko": "이 채팅의 언어를 설정했습니다: {language}",
+        "tr": "Bu sohbetin dili ayarlandı: {language}",
+    },
+    "config_language_reset": {
+        "zh": "已恢复语言自动/默认配置。",
+        "en": "Language setting restored to automatic/default.",
+        "ko": "언어 설정을 자동/기본값으로 복원했습니다.",
+        "tr": "Dil ayarı otomatik/varsayılan duruma geri alındı.",
+    },
+    "config_unknown": {
+        "zh": "不支持这个配置项。可用：/config language ... 或 /config model ...",
+        "en": "Unsupported setting. Use /config language ... or /config model ...",
+        "ko": "지원하지 않는 설정입니다. /config language ... 또는 /config model ... 을 사용하세요.",
+        "tr": "Desteklenmeyen ayar. /config language ... veya /config model ... kullanın.",
+    },
+    "config_invalid_language": {
+        "zh": "不支持这个语言：{language}。可用：auto、zh、en、ko、tr",
+        "en": "Unsupported language: {language}. Use: auto, zh, en, ko, tr",
+        "ko": "지원하지 않는 언어입니다: {language}. 사용 가능: auto, zh, en, ko, tr",
+        "tr": "Desteklenmeyen dil: {language}. Kullanılabilir: auto, zh, en, ko, tr",
     },
 }
 

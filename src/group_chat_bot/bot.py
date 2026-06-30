@@ -10,7 +10,7 @@ from typing import Any, Collection
 
 from .ai import AIResponder
 from .config import Settings
-from .language import detect_language, detect_language_from_messages, localize
+from .language import detect_language, detect_language_from_messages, localize, normalize_language
 from .news import NewsItem, fetch_random_news, format_news, format_news_card
 from .plugins import DEFAULT_COMMANDS, CommandPlugin, build_default_plugins, command_index
 from .storage import ConversationStore
@@ -162,6 +162,27 @@ class GroupChatBot:
             self.send_model_list(message.chat_id, language, reply_to_message_id=message.message_id)
             return
         self.handle_model_command(message, arg, language)
+
+    def handle_config_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        setting, _, value = arg.strip().partition(" ")
+        setting = setting.strip().lower()
+        value = value.strip()
+
+        if not setting:
+            self.send_config_status(message.chat_id, language, reply_to_message_id=message.message_id)
+            return
+        if setting in {"language", "lang"}:
+            self.handle_config_language(message, value, language)
+            return
+        if setting == "model":
+            self.handle_model_command(message, value, language)
+            return
+
+        self.telegram.send_message(
+            message.chat_id,
+            localize("config_unknown", language),
+            reply_to_message_id=message.message_id,
+        )
 
     def extract_prompt(self, message: IncomingMessage) -> str | None:
         text = message.text.strip()
@@ -329,6 +350,47 @@ class GroupChatBot:
         text = localize("model_set", language).format(model=model)
         self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
 
+    def send_config_status(self, chat_id: int, language: str, reply_to_message_id: int | None = None) -> None:
+        text = localize("config_status", language).format(
+            chat_id=chat_id,
+            language=self.configured_language_label(chat_id),
+            model=self.model_for_chat(chat_id),
+            trigger_mode=self.settings.trigger_mode,
+            autonomous_reply=format_bool(self.settings.autonomous_reply),
+            news_enabled=format_bool(self.settings.news_enabled),
+        )
+        self.telegram.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
+
+    def handle_config_language(self, message: IncomingMessage, value: str, language: str) -> None:
+        if not value:
+            text = localize("config_language_current", language).format(
+                language=self.configured_language_label(message.chat_id)
+            )
+            self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+            return
+
+        requested = value.strip()
+        if requested.lower() == "reset":
+            self.store.delete_chat_setting(message.chat_id, "language")
+            self.telegram.send_message(
+                message.chat_id,
+                localize("config_language_reset", language),
+                reply_to_message_id=message.message_id,
+            )
+            return
+
+        normalized = normalize_config_language(requested)
+        if normalized is None:
+            text = localize("config_invalid_language", language).format(language=requested)
+            self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+            return
+
+        self.store.set_chat_setting(message.chat_id, "language", normalized)
+        text = localize("config_language_set", normalized if normalized != "auto" else language).format(
+            language=normalized
+        )
+        self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+
     def model_for_chat(self, chat_id: int) -> str:
         stored = self.store.get_chat_setting(chat_id, "model")
         if stored and stored in self.settings.openai_allowed_models:
@@ -348,9 +410,15 @@ class GroupChatBot:
         latest_text: str = "",
         context: list[dict[str, str]] | None = None,
     ) -> str:
-        override = self.settings.chat_language_overrides.get(chat_id)
-        if override and override != "auto":
-            return override
+        stored_language = self.store.get_chat_setting(chat_id, "language")
+        if stored_language:
+            stored_language = normalize_language(stored_language)
+            if stored_language != "auto":
+                return stored_language
+        else:
+            override = self.settings.chat_language_overrides.get(chat_id)
+            if override and override != "auto":
+                return override
 
         default = self.settings.default_language
         if self.settings.chat_language_mode == "fixed" and default != "auto":
@@ -363,6 +431,15 @@ class GroupChatBot:
         if context is None:
             context = self.store.recent_messages(chat_id, self.settings.max_context_messages)
         return detect_language_from_messages(context, default=fallback)
+
+    def configured_language_label(self, chat_id: int) -> str:
+        stored = self.store.get_chat_setting(chat_id, "language")
+        if stored:
+            return normalize_language(stored)
+        override = self.settings.chat_language_overrides.get(chat_id)
+        if override:
+            return f"{override} (env)"
+        return self.settings.default_language
 
     def start_news_scheduler(self) -> None:
         if not self.settings.news_enabled:
@@ -491,3 +568,15 @@ def parse_poll_args(value: str) -> tuple[str, list[str]]:
     question = parts[0]
     options = parts[1:13]
     return question, options
+
+
+def format_bool(value: bool) -> str:
+    return "on" if value else "off"
+
+
+def normalize_config_language(value: str) -> str | None:
+    lowered = value.strip().lower()
+    normalized = normalize_language(lowered)
+    if normalized == "auto" and lowered != "auto":
+        return None
+    return normalized
