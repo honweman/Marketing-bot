@@ -39,6 +39,9 @@ class TelegramClient:
     def get_me(self) -> dict[str, Any]:
         return self.request("getMe")
 
+    def get_chat_member(self, chat_id: int, user_id: int) -> dict[str, Any]:
+        return self.request("getChatMember", payload={"chat_id": chat_id, "user_id": user_id}, timeout=10)
+
     def get_updates(self, offset: int | None, timeout_seconds: int) -> list[dict[str, Any]]:
         payload: dict[str, Any] = {
             "timeout": timeout_seconds,

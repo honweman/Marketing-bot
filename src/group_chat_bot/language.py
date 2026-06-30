@@ -211,10 +211,10 @@ Varsayılan grup tetikleyicileri:
         "tr": "Bu modele izin verilmiyor: {model}\nKullanılabilir modeller: {models}",
     },
     "config_status": {
-        "zh": "当前配置：\nchat_id: {chat_id}\n语言：{language}\n模型：{model}\n触发模式：{trigger_mode}\n主动回复：{autonomous_reply}\n定时新闻：{news_enabled}\n\n可用命令：\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 模型名\n/config model reset",
-        "en": "Current settings:\nchat_id: {chat_id}\nLanguage: {language}\nModel: {model}\nTrigger mode: {trigger_mode}\nAutonomous reply: {autonomous_reply}\nScheduled news: {news_enabled}\n\nCommands:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-name\n/config model reset",
-        "ko": "현재 설정:\nchat_id: {chat_id}\n언어: {language}\n모델: {model}\n호출 모드: {trigger_mode}\n자율 응답: {autonomous_reply}\n예약 뉴스: {news_enabled}\n\n명령:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 모델명\n/config model reset",
-        "tr": "Mevcut ayarlar:\nchat_id: {chat_id}\nDil: {language}\nModel: {model}\nTetikleme modu: {trigger_mode}\nOtonom yanıt: {autonomous_reply}\nPlanlı haber: {news_enabled}\n\nKomutlar:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-adı\n/config model reset",
+        "zh": "当前配置：\nchat_id: {chat_id}\n语言：{language}\n模型：{model}\n触发模式：{trigger_mode}\n主动回复：{autonomous_reply}\n定时新闻：{news_enabled}\nAI 额度：{ai_quota}\n\n可用命令：\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 模型名\n/config model reset",
+        "en": "Current settings:\nchat_id: {chat_id}\nLanguage: {language}\nModel: {model}\nTrigger mode: {trigger_mode}\nAutonomous reply: {autonomous_reply}\nScheduled news: {news_enabled}\nAI quota: {ai_quota}\n\nCommands:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-name\n/config model reset",
+        "ko": "현재 설정:\nchat_id: {chat_id}\n언어: {language}\n모델: {model}\n호출 모드: {trigger_mode}\n자율 응답: {autonomous_reply}\n예약 뉴스: {news_enabled}\nAI 한도: {ai_quota}\n\n명령:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 모델명\n/config model reset",
+        "tr": "Mevcut ayarlar:\nchat_id: {chat_id}\nDil: {language}\nModel: {model}\nTetikleme modu: {trigger_mode}\nOtonom yanıt: {autonomous_reply}\nPlanlı haber: {news_enabled}\nAI kotası: {ai_quota}\n\nKomutlar:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-adı\n/config model reset",
     },
     "config_language_current": {
         "zh": "当前语言配置：{language}",
@@ -245,6 +245,18 @@ Varsayılan grup tetikleyicileri:
         "en": "Unsupported language: {language}. Use: auto, zh, en, ko, tr",
         "ko": "지원하지 않는 언어입니다: {language}. 사용 가능: auto, zh, en, ko, tr",
         "tr": "Desteklenmeyen dil: {language}. Kullanılabilir: auto, zh, en, ko, tr",
+    },
+    "admin_required": {
+        "zh": "这个命令只允许群管理员使用。",
+        "en": "Only chat administrators can use this command.",
+        "ko": "이 명령은 채팅 관리자만 사용할 수 있습니다.",
+        "tr": "Bu komutu yalnızca sohbet yöneticileri kullanabilir.",
+    },
+    "ai_quota_exceeded": {
+        "zh": "AI 调用额度已用完：{scope}。请稍后再试或让管理员调整额度。",
+        "en": "AI request quota is exhausted: {scope}. Try again later or ask an admin to raise the limit.",
+        "ko": "AI 요청 한도를 모두 사용했습니다: {scope}. 나중에 다시 시도하거나 관리자에게 한도 조정을 요청하세요.",
+        "tr": "AI istek kotası doldu: {scope}. Daha sonra tekrar deneyin veya yöneticiden limiti artırmasını isteyin.",
     },
 }
 

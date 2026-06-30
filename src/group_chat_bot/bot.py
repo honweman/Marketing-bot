@@ -57,6 +57,7 @@ class GroupChatBot:
         self.bot_username = settings.bot_username
         self.last_autonomous_reply_at: dict[int, float] = {}
         self.autonomous_reply_times: dict[int, deque[float]] = defaultdict(deque)
+        self.admin_cache: dict[tuple[int, int], tuple[bool, float]] = {}
 
     def initialize(self) -> None:
         me = self.telegram.get_me()
@@ -118,6 +119,13 @@ class GroupChatBot:
         language = self.language_for_chat(message.chat_id, latest_text=arg)
         plugin = self.command_handlers.get(command)
         if plugin is None:
+            return
+        if self.command_requires_admin(command) and not self.is_admin(message):
+            self.telegram.send_message(
+                message.chat_id,
+                localize("admin_required", language),
+                reply_to_message_id=message.message_id,
+            )
             return
         plugin.handle(self, message, command, arg, language)
 
@@ -213,6 +221,15 @@ class GroupChatBot:
         context = self.store.recent_messages(message.chat_id, self.settings.max_context_messages)
         language = self.language_for_chat(message.chat_id, latest_text=message.text, context=context)
         model = self.model_for_chat(message.chat_id)
+        if not self.reserve_ai_request(
+            message.chat_id,
+            message.user_id,
+            purpose="autonomous_check",
+            model=model,
+            language=language,
+            notify=False,
+        ):
+            return False
         try:
             should_reply = self.ai.should_autonomously_reply(message.text, context, language=language, model=model)
         except Exception:
@@ -240,10 +257,20 @@ class GroupChatBot:
             self.telegram.send_message(message.chat_id, localize("empty_prompt", language), reply_to_message_id=message.message_id)
             return
 
-        self.telegram.send_chat_action(message.chat_id)
         context = self.store.recent_messages(message.chat_id, self.settings.max_context_messages)
         language = self.language_for_chat(message.chat_id, latest_text=prompt, context=context)
         model = self.model_for_chat(message.chat_id)
+        purpose = "search" if use_web_search else "chat"
+        if not self.reserve_ai_request(
+            message.chat_id,
+            message.user_id,
+            purpose=purpose,
+            model=model,
+            language=language,
+            reply_to_message_id=message.message_id,
+        ):
+            return
+        self.telegram.send_chat_action(message.chat_id)
         try:
             reply = self.ai.reply(prompt, context, use_web_search=use_web_search, language=language, model=model)
         except Exception:
@@ -269,7 +296,7 @@ class GroupChatBot:
         else:
             model = self.model_for_chat(chat_id)
             for index, item in enumerate(items):
-                card = self.build_news_card(item, language, model)
+                card = self.build_news_card(item, language, model, chat_id)
                 self.telegram.send_message(
                     chat_id,
                     card,
@@ -285,8 +312,10 @@ class GroupChatBot:
             prompt = f"{localize('discussion_prompt', language)}\n\n{first.title}\n{first.link}"
             self.telegram.send_message(discussion_chat_id, prompt)
 
-    def build_news_card(self, item: NewsItem, language: str, model: str) -> str:
+    def build_news_card(self, item: NewsItem, language: str, model: str, chat_id: int) -> str:
         if not self.settings.news_ai_summary:
+            return format_news_card(item, language=language)
+        if not self.reserve_ai_request(chat_id, None, purpose="news_card", model=model, language=language, notify=False):
             return format_news_card(item, language=language)
         try:
             return self.ai.news_card(item, language=language, model=model)
@@ -358,6 +387,7 @@ class GroupChatBot:
             trigger_mode=self.settings.trigger_mode,
             autonomous_reply=format_bool(self.settings.autonomous_reply),
             news_enabled=format_bool(self.settings.news_enabled),
+            ai_quota=self.ai_quota_label(),
         )
         self.telegram.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
 
@@ -440,6 +470,93 @@ class GroupChatBot:
         if override:
             return f"{override} (env)"
         return self.settings.default_language
+
+    def command_requires_admin(self, command: str) -> bool:
+        admin_only_commands = getattr(self.settings, "admin_only_commands", set())
+        return command.lower() in admin_only_commands
+
+    def is_admin(self, message: IncomingMessage) -> bool:
+        admin_user_ids = getattr(self.settings, "admin_user_ids", set())
+        if message.user_id is not None and message.user_id in admin_user_ids:
+            return True
+
+        if message.chat_type == "channel" and message.user_id is None:
+            return True
+        if message.user_id is None or not message.is_group:
+            return False
+
+        now = time.time()
+        cache_key = (message.chat_id, message.user_id)
+        cached = self.admin_cache.get(cache_key)
+        if cached and cached[1] > now:
+            return cached[0]
+
+        try:
+            member = self.telegram.get_chat_member(message.chat_id, message.user_id)
+            is_admin = member.get("status") in {"administrator", "creator"}
+        except Exception:
+            logger.exception("Could not verify Telegram admin status")
+            is_admin = False
+
+        self.admin_cache[cache_key] = (is_admin, now + 300)
+        return is_admin
+
+    def reserve_ai_request(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        purpose: str,
+        model: str,
+        language: str,
+        reply_to_message_id: int | None = None,
+        notify: bool = True,
+    ) -> bool:
+        if getattr(self.settings, "mock_ai", False):
+            return True
+
+        exceeded_scope = self.ai_quota_exceeded_scope(chat_id)
+        if exceeded_scope is not None:
+            if notify:
+                self.telegram.send_message(
+                    chat_id,
+                    localize("ai_quota_exceeded", language).format(scope=exceeded_scope),
+                    reply_to_message_id=reply_to_message_id,
+                )
+            return False
+
+        self.store.record_ai_usage(chat_id, user_id, purpose=purpose, model=model)
+        return True
+
+    def ai_quota_exceeded_scope(self, chat_id: int) -> str | None:
+        now = time.time()
+        checks = [
+            (getattr(self.settings, "ai_chat_hourly_limit", 0), chat_id, now - 3600, "chat hourly"),
+            (getattr(self.settings, "ai_chat_daily_limit", 0), chat_id, now - 86400, "chat daily"),
+            (getattr(self.settings, "ai_global_hourly_limit", 0), None, now - 3600, "global hourly"),
+            (getattr(self.settings, "ai_global_daily_limit", 0), None, now - 86400, "global daily"),
+        ]
+        for limit, scoped_chat_id, since, label in checks:
+            if limit <= 0:
+                continue
+            if self.store.count_ai_usage(since=since, chat_id=scoped_chat_id) >= limit:
+                return f"{label} limit {limit}"
+        return None
+
+    def ai_quota_label(self) -> str:
+        parts = []
+        chat_hourly = getattr(self.settings, "ai_chat_hourly_limit", 0)
+        chat_daily = getattr(self.settings, "ai_chat_daily_limit", 0)
+        global_hourly = getattr(self.settings, "ai_global_hourly_limit", 0)
+        global_daily = getattr(self.settings, "ai_global_daily_limit", 0)
+        if chat_hourly > 0:
+            parts.append(f"chat {chat_hourly}/hour")
+        if chat_daily > 0:
+            parts.append(f"chat {chat_daily}/day")
+        if global_hourly > 0:
+            parts.append(f"global {global_hourly}/hour")
+        if global_daily > 0:
+            parts.append(f"global {global_daily}/day")
+        return ", ".join(parts) if parts else "off"
 
     def start_news_scheduler(self) -> None:
         if not self.settings.news_enabled:

@@ -61,6 +61,30 @@ class ConversationStore:
             )
             """
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER,
+                purpose TEXT NOT NULL,
+                model TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_chat_created
+            ON ai_usage(chat_id, created_at)
+            """
+        )
+        self.conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_created
+            ON ai_usage(created_at)
+            """
+        )
         self.conn.commit()
 
     def add_message(self, chat_id: int, role: str, content: str, user_name: str | None = None) -> None:
@@ -144,3 +168,29 @@ class ConversationStore:
     def delete_chat_setting(self, chat_id: int, key: str) -> None:
         self.conn.execute("DELETE FROM chat_settings WHERE chat_id = ? AND key = ?", (chat_id, key))
         self.conn.commit()
+
+    def record_ai_usage(
+        self,
+        chat_id: int,
+        user_id: int | None,
+        purpose: str,
+        model: str,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO ai_usage(chat_id, user_id, purpose, model, created_at) VALUES (?, ?, ?, ?, ?)",
+            (chat_id, user_id, purpose, model, time.time()),
+        )
+        self.conn.commit()
+
+    def count_ai_usage(self, since: float, chat_id: int | None = None) -> int:
+        if chat_id is None:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS count FROM ai_usage WHERE created_at >= ?",
+                (since,),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS count FROM ai_usage WHERE chat_id = ? AND created_at >= ?",
+                (chat_id, since),
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0

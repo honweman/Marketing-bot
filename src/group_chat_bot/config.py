@@ -67,6 +67,12 @@ class Settings:
     autonomous_reply_max_per_hour: int
     openai_web_search: bool
     openai_web_search_tool: str
+    ai_chat_hourly_limit: int
+    ai_chat_daily_limit: int
+    ai_global_hourly_limit: int
+    ai_global_daily_limit: int
+    admin_user_ids: set[int]
+    admin_only_commands: set[str]
     news_enabled: bool
     news_chat_ids: set[int]
     news_interval_minutes: int
@@ -132,6 +138,14 @@ class Settings:
             autonomous_reply_max_per_hour=int(os.getenv("AUTONOMOUS_REPLY_MAX_PER_HOUR", "3")),
             openai_web_search=os.getenv("OPENAI_WEB_SEARCH", "1").strip() == "1",
             openai_web_search_tool=os.getenv("OPENAI_WEB_SEARCH_TOOL", "web_search").strip(),
+            ai_chat_hourly_limit=int(os.getenv("AI_CHAT_HOURLY_LIMIT", "60")),
+            ai_chat_daily_limit=int(os.getenv("AI_CHAT_DAILY_LIMIT", "300")),
+            ai_global_hourly_limit=int(os.getenv("AI_GLOBAL_HOURLY_LIMIT", "0")),
+            ai_global_daily_limit=int(os.getenv("AI_GLOBAL_DAILY_LIMIT", "0")),
+            admin_user_ids=parse_int_set(os.getenv("ADMIN_USER_IDS", "")),
+            admin_only_commands={
+                command.lower() for command in parse_csv(os.getenv("ADMIN_ONLY_COMMANDS", "config,model,news,poll"))
+            },
             news_enabled=os.getenv("NEWS_ENABLED", "0").strip() == "1",
             news_chat_ids=parse_int_set(os.getenv("NEWS_CHAT_IDS", "")),
             news_interval_minutes=int(os.getenv("NEWS_INTERVAL_MINUTES", "360")),

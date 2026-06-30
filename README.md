@@ -9,6 +9,7 @@
 - 可配置多个 GPT 模型，并按群/频道切换当前模型。
 - 插件式命令注册：新闻、投票、模型、搜索、活跃榜等命令可独立扩展。
 - 群内简单配置入口：`/config` 查看和修改当前群配置。
+- 管理员命令门禁和 AI 调用额度限制，降低刷屏和成本风险。
 - 群聊触发规则：`mention_or_reply`、`always`、`command_only`。
 - SQLite 保存最近上下文。
 - 群白名单，避免机器人被拉到陌生群后被滥用。
@@ -100,8 +101,14 @@ PYTHONPATH=src python -m group_chat_bot
 | `DEFAULT_LANGUAGE` | `auto` | 默认语言：`auto`、`zh`、`en`、`ko`、`tr` |
 | `CHAT_LANGUAGE_MODE` | `auto` | `auto` 自动检测，`fixed` 固定用默认语言 |
 | `CHAT_LANGUAGE_OVERRIDES` | 空 | 指定群/频道语言，例如 `-1001:ko,-1002:tr` |
+| `ADMIN_USER_IDS` | 空 | 永远允许执行管理员命令的 Telegram user_id |
+| `ADMIN_ONLY_COMMANDS` | `config,model,news,poll` | 需要群管理员权限的命令 |
 | `OPENAI_WEB_SEARCH` | `1` | `/search` 是否启用 OpenAI web search |
 | `OPENAI_WEB_SEARCH_TOOL` | `web_search` | OpenAI web search 工具类型 |
+| `AI_CHAT_HOURLY_LIMIT` | `60` | 单个群每小时最多 AI 请求数，`0` 表示不限 |
+| `AI_CHAT_DAILY_LIMIT` | `300` | 单个群每天最多 AI 请求数，`0` 表示不限 |
+| `AI_GLOBAL_HOURLY_LIMIT` | `0` | 全局每小时最多 AI 请求数，`0` 表示不限 |
+| `AI_GLOBAL_DAILY_LIMIT` | `0` | 全局每天最多 AI 请求数，`0` 表示不限 |
 | `NEWS_ENABLED` | `0` | 是否启用定时新闻 |
 | `NEWS_CHAT_IDS` | 空 | 定时新闻发送群；空时使用 `ALLOWED_CHAT_IDS` |
 | `NEWS_INTERVAL_MINUTES` | `360` | 新闻推送间隔 |
@@ -171,6 +178,28 @@ OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
 ```
 
 这些配置会存进 SQLite，重启后仍然有效。全局配置仍然通过 `.env` 管理。
+
+## 管理员和额度
+
+正式启用前建议保留默认门禁：
+
+```bash
+ADMIN_ONLY_COMMANDS=config,model,news,poll
+ADMIN_USER_IDS=123456789
+```
+
+`ADMIN_ONLY_COMMANDS` 里的命令只有 Telegram 群管理员或 `ADMIN_USER_IDS` 里的用户能执行。频道贴文没有真实 user_id，机器人会把频道管理员发出的频道命令视为允许。
+
+AI 额度按“请求次数”计数，不保存提示词内容：
+
+```bash
+AI_CHAT_HOURLY_LIMIT=60
+AI_CHAT_DAILY_LIMIT=300
+AI_GLOBAL_HOURLY_LIMIT=0
+AI_GLOBAL_DAILY_LIMIT=0
+```
+
+普通 `/chat`、`/search`、主动回复判断、AI 新闻卡片都会计入额度。RSS 抓新闻、投票、活跃榜不消耗 AI 额度。
 
 ## 自主回复和新闻
 
