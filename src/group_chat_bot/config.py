@@ -43,11 +43,16 @@ def parse_int_map(value: str) -> dict[int, int]:
     return result
 
 
+def parse_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     telegram_bot_token: str
     openai_api_key: str | None
     openai_model: str
+    openai_allowed_models: list[str]
     bot_username: str | None
     allowed_chat_ids: set[int]
     trigger_mode: str
@@ -98,11 +103,18 @@ class Settings:
         news_card_mode = os.getenv("NEWS_CARD_MODE", "card").strip().lower()
         if news_card_mode not in {"links", "card"}:
             raise RuntimeError("NEWS_CARD_MODE must be links or card")
+        openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+        openai_allowed_models = parse_csv(os.getenv("OPENAI_ALLOWED_MODELS", ""))
+        if not openai_allowed_models:
+            openai_allowed_models = [openai_model]
+        elif openai_model not in openai_allowed_models:
+            openai_allowed_models.insert(0, openai_model)
 
         return cls(
             telegram_bot_token=token,
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip(),
+            openai_model=openai_model,
+            openai_allowed_models=openai_allowed_models,
             bot_username=(os.getenv("BOT_USERNAME") or "").strip().lstrip("@") or None,
             allowed_chat_ids=parse_int_set(os.getenv("ALLOWED_CHAT_IDS", "")),
             trigger_mode=trigger_mode,
@@ -124,7 +136,7 @@ class Settings:
             news_chat_ids=parse_int_set(os.getenv("NEWS_CHAT_IDS", "")),
             news_interval_minutes=int(os.getenv("NEWS_INTERVAL_MINUTES", "360")),
             news_count=int(os.getenv("NEWS_COUNT", "3")),
-            news_keywords=[item.strip() for item in os.getenv("NEWS_KEYWORDS", "").split(",") if item.strip()],
+            news_keywords=parse_csv(os.getenv("NEWS_KEYWORDS", "")),
             news_rss_feeds=[
                 item.strip()
                 for item in os.getenv(

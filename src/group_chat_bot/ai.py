@@ -29,6 +29,7 @@ class AIResponder:
         context: list[dict[str, str]],
         use_web_search: bool = False,
         language: str = "zh",
+        model: str | None = None,
     ) -> str:
         if self.mock:
             mock_text = {
@@ -48,7 +49,7 @@ class AIResponder:
             {"role": "user", "content": prompt},
         ]
         kwargs = {
-            "model": self.model,
+            "model": model or self.model,
             "input": input_messages,
         }
         if use_web_search and self.web_search_enabled:
@@ -59,7 +60,13 @@ class AIResponder:
             return text.strip()
         return localize("ai_failed", language)
 
-    def should_autonomously_reply(self, latest_message: str, context: list[dict[str, str]], language: str = "zh") -> bool:
+    def should_autonomously_reply(
+        self,
+        latest_message: str,
+        context: list[dict[str, str]],
+        language: str = "zh",
+        model: str | None = None,
+    ) -> bool:
         if self.mock:
             markers = ("?", "？", "怎么", "如何", "为什么", "帮我", "谁知道", "有办法")
             return any(marker in latest_message for marker in markers)
@@ -75,7 +82,7 @@ class AIResponder:
             f"最新消息：{latest_message}"
         )
         response = self.client.responses.create(
-            model=self.model,
+            model=model or self.model,
             input=[
                 {
                     "role": "system",
@@ -92,7 +99,7 @@ class AIResponder:
         text = (getattr(response, "output_text", "") or "").strip().upper()
         return text.startswith("YES")
 
-    def news_card(self, item: NewsItem, language: str = "zh") -> str:
+    def news_card(self, item: NewsItem, language: str = "zh", model: str | None = None) -> str:
         if self.mock:
             return format_news_card(item, language=language)
 
@@ -110,7 +117,7 @@ class AIResponder:
             f"Link: {item.link}"
         )
         response = self.client.responses.create(
-            model=self.model,
+            model=model or self.model,
             input=[
                 {"role": "system", "content": "You write concise, high-engagement Telegram channel posts."},
                 {"role": "user", "content": prompt},

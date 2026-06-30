@@ -146,6 +146,12 @@ class GroupChatBot:
         if command == "leaderboard":
             self.send_leaderboard(message.chat_id, reply_to_message_id=message.message_id)
             return
+        if command == "models":
+            self.send_model_list(message.chat_id, language, reply_to_message_id=message.message_id)
+            return
+        if command == "model":
+            self.handle_model_command(message, arg, language)
+            return
 
     def extract_prompt(self, message: IncomingMessage) -> str | None:
         text = message.text.strip()
@@ -175,8 +181,9 @@ class GroupChatBot:
             return False
         context = self.store.recent_messages(message.chat_id, self.settings.max_context_messages)
         language = self.language_for_chat(message.chat_id, latest_text=message.text, context=context)
+        model = self.model_for_chat(message.chat_id)
         try:
-            should_reply = self.ai.should_autonomously_reply(message.text, context, language=language)
+            should_reply = self.ai.should_autonomously_reply(message.text, context, language=language, model=model)
         except Exception:
             logger.exception("Autonomous reply decision failed")
             return False
@@ -205,8 +212,9 @@ class GroupChatBot:
         self.telegram.send_chat_action(message.chat_id)
         context = self.store.recent_messages(message.chat_id, self.settings.max_context_messages)
         language = self.language_for_chat(message.chat_id, latest_text=prompt, context=context)
+        model = self.model_for_chat(message.chat_id)
         try:
-            reply = self.ai.reply(prompt, context, use_web_search=use_web_search, language=language)
+            reply = self.ai.reply(prompt, context, use_web_search=use_web_search, language=language, model=model)
         except Exception:
             logger.exception("AI response failed")
             self.telegram.send_message(message.chat_id, localize("ai_failed", language), reply_to_message_id=message.message_id)
@@ -228,8 +236,9 @@ class GroupChatBot:
         if self.settings.news_card_mode == "links":
             self.telegram.send_message(chat_id, format_news(items, language=language), reply_to_message_id=reply_to_message_id)
         else:
+            model = self.model_for_chat(chat_id)
             for index, item in enumerate(items):
-                card = self.build_news_card(item, language)
+                card = self.build_news_card(item, language, model)
                 self.telegram.send_message(
                     chat_id,
                     card,
@@ -245,11 +254,11 @@ class GroupChatBot:
             prompt = f"{localize('discussion_prompt', language)}\n\n{first.title}\n{first.link}"
             self.telegram.send_message(discussion_chat_id, prompt)
 
-    def build_news_card(self, item: NewsItem, language: str) -> str:
+    def build_news_card(self, item: NewsItem, language: str, model: str) -> str:
         if not self.settings.news_ai_summary:
             return format_news_card(item, language=language)
         try:
-            return self.ai.news_card(item, language=language)
+            return self.ai.news_card(item, language=language, model=model)
         except Exception:
             logger.exception("AI news card failed")
             return format_news_card(item, language=language)
@@ -277,6 +286,51 @@ class GroupChatBot:
         for index, row in enumerate(rows, start=1):
             lines.append(f"{index}. {row['user_name']} · {row['score']}")
         self.telegram.send_message(chat_id, "\n".join(lines), reply_to_message_id=reply_to_message_id)
+
+    def send_model_list(self, chat_id: int, language: str, reply_to_message_id: int | None = None) -> None:
+        current = self.model_for_chat(chat_id)
+        models = "\n".join(f"- {model}" for model in self.settings.openai_allowed_models)
+        text = localize("model_list", language).format(models=models, current=current)
+        self.telegram.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
+
+    def handle_model_command(self, message: IncomingMessage, arg: str, language: str) -> None:
+        requested = arg.strip()
+        if not requested:
+            current = self.model_for_chat(message.chat_id)
+            text = localize("model_current", language).format(model=current)
+            self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+            return
+
+        if requested.lower() == "reset":
+            self.store.delete_chat_setting(message.chat_id, "model")
+            model = self.settings.openai_model
+            text = localize("model_reset", language).format(model=model)
+            self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+            return
+
+        model = self.normalize_model(requested)
+        if model is None:
+            models = ", ".join(self.settings.openai_allowed_models)
+            text = localize("model_not_allowed", language).format(model=requested, models=models)
+            self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+            return
+
+        self.store.set_chat_setting(message.chat_id, "model", model)
+        text = localize("model_set", language).format(model=model)
+        self.telegram.send_message(message.chat_id, text, reply_to_message_id=message.message_id)
+
+    def model_for_chat(self, chat_id: int) -> str:
+        stored = self.store.get_chat_setting(chat_id, "model")
+        if stored and stored in self.settings.openai_allowed_models:
+            return stored
+        return self.settings.openai_model
+
+    def normalize_model(self, value: str) -> str | None:
+        lowered = value.strip().lower()
+        for model in self.settings.openai_allowed_models:
+            if model.lower() == lowered:
+                return model
+        return None
 
     def language_for_chat(
         self,
@@ -388,7 +442,21 @@ def parse_command(text: str, bot_username: str) -> tuple[str | None, str]:
         command = name
 
     command = command.lower()
-    known = {"start", "help", "id", "reset", "privacy", "chat", "ask", "search", "news", "poll", "leaderboard"}
+    known = {
+        "start",
+        "help",
+        "id",
+        "reset",
+        "privacy",
+        "chat",
+        "ask",
+        "search",
+        "news",
+        "poll",
+        "leaderboard",
+        "model",
+        "models",
+    }
     if command not in known:
         return None, ""
     return command, rest.strip()

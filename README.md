@@ -6,6 +6,7 @@
 
 - Telegram Bot API 长轮询，无需公网服务器即可先跑起来。
 - OpenAI AI 回复。
+- 可配置多个 GPT 模型，并按群/频道切换当前模型。
 - 群聊触发规则：`mention_or_reply`、`always`、`command_only`。
 - SQLite 保存最近上下文。
 - 群白名单，避免机器人被拉到陌生群后被滥用。
@@ -66,6 +67,8 @@ PYTHONPATH=src python -m group_chat_bot
 /news AI crypto
 /poll 你更看好哪个市场？ | 韩国 | 土耳其 | 美国
 /leaderboard
+/models
+/model gpt-4.1
 ```
 
 也可以直接回复机器人的消息继续对话。
@@ -77,6 +80,7 @@ PYTHONPATH=src python -m group_chat_bot
 | `TELEGRAM_BOT_TOKEN` | 必填 | BotFather 给的 token |
 | `OPENAI_API_KEY` | 可选 | AI 回复需要；不填且 `MOCK_AI=1` 时走本地假回复 |
 | `OPENAI_MODEL` | `gpt-4.1-mini` | OpenAI 模型 |
+| `OPENAI_ALLOWED_MODELS` | 同 `OPENAI_MODEL` | 逗号分隔，可在群里切换的模型白名单 |
 | `BOT_USERNAME` | 自动读取 | 可手填，不带 `@` |
 | `ALLOWED_CHAT_IDS` | 空 | 逗号分隔；空代表不限制，不推荐生产使用 |
 | `TRIGGER_MODE` | `mention_or_reply` | `mention_or_reply`、`always`、`command_only` |
@@ -108,6 +112,26 @@ PYTHONPATH=src python -m group_chat_bot
 | `LEADERBOARD_CHAT_IDS` | 空 | 定时发榜的群；空时用 `ALLOWED_CHAT_IDS` |
 | `LEADERBOARD_INTERVAL_HOURS` | `168` | 发榜间隔，默认 7 天 |
 | `LEADERBOARD_DAYS` | `7` | 统计最近几天活跃 |
+
+## 多模型
+
+`.env` 里配置允许使用的模型：
+
+```bash
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
+```
+
+群里可用：
+
+```text
+/models
+/model
+/model gpt-4.1
+/model reset
+```
+
+`/model gpt-4.1` 会把当前群/频道后续 AI 回复、`/search`、自主回复判断、AI 新闻卡片都切到该模型。`/model reset` 恢复 `.env` 里的 `OPENAI_MODEL`。
 
 ## 自主回复和新闻
 

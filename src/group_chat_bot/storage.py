@@ -50,6 +50,17 @@ class ConversationStore:
             ON user_activity(chat_id, created_at)
             """
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_settings (
+                chat_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (chat_id, key)
+            )
+            """
+        )
         self.conn.commit()
 
     def add_message(self, chat_id: int, role: str, content: str, user_name: str | None = None) -> None:
@@ -110,3 +121,26 @@ class ConversationStore:
             {"user_id": int(row["user_id"]), "user_name": row["user_name"], "score": int(row["score"])}
             for row in rows
         ]
+
+    def get_chat_setting(self, chat_id: int, key: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT value FROM chat_settings WHERE chat_id = ? AND key = ?",
+            (chat_id, key),
+        ).fetchone()
+        return str(row["value"]) if row is not None else None
+
+    def set_chat_setting(self, chat_id: int, key: str, value: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO chat_settings(chat_id, key, value, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(chat_id, key)
+            DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """,
+            (chat_id, key, value, time.time()),
+        )
+        self.conn.commit()
+
+    def delete_chat_setting(self, chat_id: int, key: str) -> None:
+        self.conn.execute("DELETE FROM chat_settings WHERE chat_id = ? AND key = ?", (chat_id, key))
+        self.conn.commit()

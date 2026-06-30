@@ -1,4 +1,7 @@
-from group_chat_bot.bot import parse_command, parse_message, parse_poll_args, split_keywords
+from types import SimpleNamespace
+
+from group_chat_bot.bot import GroupChatBot, IncomingMessage, parse_command, parse_message, parse_poll_args, split_keywords
+from group_chat_bot.storage import ConversationStore
 from group_chat_bot.telegram_api import TelegramClient
 
 
@@ -9,6 +12,8 @@ def test_parse_command_with_username():
     assert parse_command("/news AI, crypto", "my_bot") == ("news", "AI, crypto")
     assert parse_command("/poll A? | Yes | No", "my_bot") == ("poll", "A? | Yes | No")
     assert parse_command("/leaderboard", "my_bot") == ("leaderboard", "")
+    assert parse_command("/models", "my_bot") == ("models", "")
+    assert parse_command("/model gpt-4.1", "my_bot") == ("model", "gpt-4.1")
 
 
 def test_parse_message_reply_to_bot():
@@ -72,3 +77,49 @@ def test_send_poll_payload_uses_input_poll_options():
 
     assert client.last_method == "sendPoll"
     assert client.last_payload["options"] == [{"text": "Yes"}, {"text": "No"}]
+
+
+def test_model_command_persists_chat_model(tmp_path):
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+
+        def send_message(self, chat_id, text, reply_to_message_id=None, parse_mode=None):
+            self.messages.append(
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": reply_to_message_id,
+                    "parse_mode": parse_mode,
+                }
+            )
+
+    settings = SimpleNamespace(
+        openai_model="gpt-4.1-mini",
+        openai_allowed_models=["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+        bot_username="my_bot",
+    )
+    telegram = FakeTelegram()
+    store = ConversationStore(tmp_path / "bot.sqlite3")
+    bot = GroupChatBot(settings=settings, telegram=telegram, ai=object(), store=store)
+    message = IncomingMessage(
+        chat_id=-1001,
+        chat_type="supergroup",
+        message_id=10,
+        text="/model gpt-4.1",
+        user_name="alice",
+        reply_to_bot=False,
+        user_id=7,
+    )
+
+    assert bot.model_for_chat(-1001) == "gpt-4.1-mini"
+    bot.handle_model_command(message, "GPT-4.1", "en")
+    assert bot.model_for_chat(-1001) == "gpt-4.1"
+    assert "gpt-4.1" in telegram.messages[-1]["text"]
+
+    bot.handle_model_command(message, "unknown-model", "en")
+    assert bot.model_for_chat(-1001) == "gpt-4.1"
+    assert "unknown-model" in telegram.messages[-1]["text"]
+
+    bot.handle_model_command(message, "reset", "en")
+    assert bot.model_for_chat(-1001) == "gpt-4.1-mini"

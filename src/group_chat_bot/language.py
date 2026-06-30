@@ -26,6 +26,8 @@ LOCALIZED = {
 /news [关键词] - 随机发几条外媒/RSS 新闻
 /poll 问题 | 选项1 | 选项2 - 发起投票
 /leaderboard - 查看活跃榜
+/model [模型名|reset] - 查看或切换本群 GPT 模型
+/models - 查看可用 GPT 模型
 
 群聊默认触发方式：
 1. @机器人 你的问题
@@ -43,6 +45,8 @@ LOCALIZED = {
 /news [keywords] - Send a few random news links
 /poll question | option 1 | option 2 - Create a poll
 /leaderboard - Show active members
+/model [model|reset] - Show or switch this chat's GPT model
+/models - Show available GPT models
 
 Default group triggers:
 1. @mention the bot
@@ -60,6 +64,8 @@ Default group triggers:
 /news [키워드] - 무작위 뉴스 몇 개 전송
 /poll 질문 | 선택지 1 | 선택지 2 - 투표 만들기
 /leaderboard - 활발한 멤버 보기
+/model [모델|reset] - 이 채팅의 GPT 모델 보기 또는 변경
+/models - 사용 가능한 GPT 모델 보기
 
 기본 그룹 호출 방식:
 1. 봇을 @멘션
@@ -77,6 +83,8 @@ Default group triggers:
 /news [anahtar kelimeler] - Rastgele birkaç haber gönder
 /poll soru | seçenek 1 | seçenek 2 - Anket oluştur
 /leaderboard - Aktif üyeleri göster
+/model [model|reset] - Bu sohbetin GPT modelini göster veya değiştir
+/models - Kullanılabilir GPT modellerini göster
 
 Varsayılan grup tetikleyicileri:
 1. Botu @etiketle
@@ -167,6 +175,36 @@ Varsayılan grup tetikleyicileri:
         "en": "Not enough activity data yet.",
         "ko": "아직 충분한 활동 데이터가 없습니다.",
         "tr": "Henüz yeterli etkinlik verisi yok.",
+    },
+    "model_current": {
+        "zh": "当前模型：{model}",
+        "en": "Current model: {model}",
+        "ko": "현재 모델: {model}",
+        "tr": "Mevcut model: {model}",
+    },
+    "model_list": {
+        "zh": "可用模型：\n{models}\n\n当前模型：{current}",
+        "en": "Available models:\n{models}\n\nCurrent model: {current}",
+        "ko": "사용 가능한 모델:\n{models}\n\n현재 모델: {current}",
+        "tr": "Kullanılabilir modeller:\n{models}\n\nMevcut model: {current}",
+    },
+    "model_set": {
+        "zh": "已切换本群模型：{model}",
+        "en": "This chat now uses: {model}",
+        "ko": "이 채팅의 모델을 변경했습니다: {model}",
+        "tr": "Bu sohbetin modeli değiştirildi: {model}",
+    },
+    "model_reset": {
+        "zh": "已恢复默认模型：{model}",
+        "en": "Default model restored: {model}",
+        "ko": "기본 모델로 복원했습니다: {model}",
+        "tr": "Varsayılan model geri yüklendi: {model}",
+    },
+    "model_not_allowed": {
+        "zh": "不允许使用这个模型：{model}\n可用模型：{models}",
+        "en": "This model is not allowed: {model}\nAvailable models: {models}",
+        "ko": "이 모델은 허용되지 않습니다: {model}\n사용 가능한 모델: {models}",
+        "tr": "Bu modele izin verilmiyor: {model}\nKullanılabilir modeller: {models}",
     },
 }
 
