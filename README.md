@@ -11,11 +11,13 @@
 - 群内简单配置入口：`/config` 查看和修改当前群配置。
 - 管理员命令门禁和 AI 调用额度限制，降低刷屏和成本风险。
 - 群聊触发规则：`mention_or_reply`、`always`、`command_only`。
+- 发布模式：普通 bot、频道身份发帖、AI 副驾驶草稿。
 - SQLite 保存最近上下文。
 - 群白名单，避免机器人被拉到陌生群后被滥用。
 - 可选自主回复：根据群聊上下文判断是否应该主动插话。
 - 自动按群聊/频道语言回复：支持中文、韩语、英语、土耳其语。
 - `/search` 使用 OpenAI Responses API 的 web search 工具回答最新外网问题。
+- `/copilot` 生成给管理员手动发送的回复草稿，不直接代发。
 - `/news` 从外媒/RSS 源随机发几条新闻。
 - 可选定时新闻推送。
 - 新闻卡片：把链接变成摘要、价值点和互动问题。
@@ -35,6 +37,7 @@
    - 如果你想让 bot 读取群里所有消息，改成 `Disable`，并把 `.env` 的 `TRIGGER_MODE=always`。
 5. 把 bot 加进群。
 6. 在群里发送 `/id`，拿到群 ID 后填入 `ALLOWED_CHAT_IDS`。
+7. 如果要用 AI 副驾驶，管理员先私聊 bot 发送 `/id`，把返回的私聊 ID 填入 `COPILOT_ADMIN_CHAT_ID`。
 
 ## 本地运行
 
@@ -67,6 +70,7 @@ PYTHONPATH=src python -m group_chat_bot
 /chat 给我一个发公告的文案
 /ask 解释一下 Apple 内购审核要注意什么
 /search 今天 AI 行业有什么新闻
+/copilot 根据刚才讨论写一句自然回复
 /news AI crypto
 /poll 你更看好哪个市场？ | 韩国 | 土耳其 | 美国
 /leaderboard
@@ -89,6 +93,10 @@ PYTHONPATH=src python -m group_chat_bot
 | `BOT_USERNAME` | 自动读取 | 可手填，不带 `@` |
 | `ALLOWED_CHAT_IDS` | 空 | 逗号分隔；空代表不限制，不推荐生产使用 |
 | `TRIGGER_MODE` | `mention_or_reply` | `mention_or_reply`、`always`、`command_only` |
+| `POST_MODE` | `bot` | `bot` 普通 bot 回复，`channel` 新闻发到频道，`copilot` 只生成管理员草稿 |
+| `TARGET_CHANNEL_ID` | 空 | `POST_MODE=channel` 时的目标频道 ID |
+| `DISCUSSION_GROUP_ID` | 空 | 频道绑定讨论群 ID；新闻后可在讨论群抛问题 |
+| `COPILOT_ADMIN_CHAT_ID` | 空 | `POST_MODE=copilot` 或 `/copilot` 草稿接收人的私聊 chat_id |
 | `DATABASE_PATH` | `data/bot.sqlite3` | SQLite 文件 |
 | `SYSTEM_PROMPT` | 内置中文助手提示 | 机器人角色 |
 | `MAX_CONTEXT_MESSAGES` | `12` | 每个 chat 带入模型的上下文条数 |
@@ -102,7 +110,7 @@ PYTHONPATH=src python -m group_chat_bot
 | `CHAT_LANGUAGE_MODE` | `auto` | `auto` 自动检测，`fixed` 固定用默认语言 |
 | `CHAT_LANGUAGE_OVERRIDES` | 空 | 指定群/频道语言，例如 `-1001:ko,-1002:tr` |
 | `ADMIN_USER_IDS` | 空 | 永远允许执行管理员命令的 Telegram user_id |
-| `ADMIN_ONLY_COMMANDS` | `config,model,news,poll` | 需要群管理员权限的命令 |
+| `ADMIN_ONLY_COMMANDS` | `config,model,news,poll,copilot` | 需要群管理员权限的命令 |
 | `OPENAI_WEB_SEARCH` | `1` | `/search` 是否启用 OpenAI web search |
 | `OPENAI_WEB_SEARCH_TOOL` | `web_search` | OpenAI web search 工具类型 |
 | `AI_CHAT_HOURLY_LIMIT` | `60` | 单个群每小时最多 AI 请求数，`0` 表示不限 |
@@ -153,6 +161,7 @@ OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
 | `core` | `/start`、`/help`、`/id`、`/reset`、`/privacy` |
 | `chat` | `/chat`、`/ask` |
 | `search` | `/search` |
+| `copilot` | `/copilot` |
 | `news` | `/news` |
 | `poll` | `/poll` |
 | `leaderboard` | `/leaderboard` |
@@ -179,12 +188,49 @@ OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
 
 这些配置会存进 SQLite，重启后仍然有效。全局配置仍然通过 `.env` 管理。
 
+## 发布模式
+
+默认模式保持官方 bot 行为：
+
+```bash
+POST_MODE=bot
+```
+
+频道身份发帖模式适合“新闻/话题看起来由频道发布，而不是 bot 在群里刷屏”：
+
+```bash
+POST_MODE=channel
+TARGET_CHANNEL_ID=-1001111111111
+DISCUSSION_GROUP_ID=-1002222222222
+NEWS_ENABLED=1
+```
+
+机器人需要被设为频道管理员。定时新闻和 `/news` 会优先发到 `TARGET_CHANNEL_ID`。如果配置了 `DISCUSSION_GROUP_ID` 或 `NEWS_DISCUSSION_MAP`，新闻后会在讨论群抛一个问题。
+
+AI 副驾驶模式适合“普通账号人工确认后再发”：
+
+```bash
+POST_MODE=copilot
+COPILOT_ADMIN_CHAT_ID=123456789
+```
+
+这个模式下 `/chat`、`/search`、@提及和自主触发不会直接在群里回复，而是把草稿发给 `COPILOT_ADMIN_CHAT_ID`。管理员需要先私聊启动机器人，否则 Telegram 不允许 bot 主动私聊该用户。
+
+也可以在任意模式下手动使用：
+
+```text
+/copilot 根据最近讨论写一句自然回复
+/copilot search 今天 AI 行业有什么值得讨论的新闻
+```
+
+这个项目不做普通 Telegram 账号自动登录、保存 session、自动代发或伪装真人；副驾驶模式只生成草稿，最终是否发送由管理员人工决定。
+
 ## 管理员和额度
 
 正式启用前建议保留默认门禁：
 
 ```bash
-ADMIN_ONLY_COMMANDS=config,model,news,poll
+ADMIN_ONLY_COMMANDS=config,model,news,poll,copilot
 ADMIN_USER_IDS=123456789
 ```
 

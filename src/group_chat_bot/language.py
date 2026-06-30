@@ -23,6 +23,7 @@ LOCALIZED = {
 /chat 你的问题 - 让机器人回答
 /ask 你的问题 - 同 /chat
 /search 你的问题 - 带外网搜索回答
+/copilot 你的需求 - 生成给管理员手动发送的回复草稿
 /news [关键词] - 随机发几条外媒/RSS 新闻
 /poll 问题 | 选项1 | 选项2 - 发起投票
 /leaderboard - 查看活跃榜
@@ -43,6 +44,7 @@ LOCALIZED = {
 /chat your question - Ask the bot
 /ask your question - Same as /chat
 /search your question - Answer with web search
+/copilot your request - Draft a reply for an admin to send manually
 /news [keywords] - Send a few random news links
 /poll question | option 1 | option 2 - Create a poll
 /leaderboard - Show active members
@@ -63,6 +65,7 @@ Default group triggers:
 /chat 질문 - 봇에게 질문
 /ask 질문 - /chat과 동일
 /search 질문 - 웹 검색으로 답변
+/copilot 요청 - 관리자가 직접 보낼 답변 초안 생성
 /news [키워드] - 무작위 뉴스 몇 개 전송
 /poll 질문 | 선택지 1 | 선택지 2 - 투표 만들기
 /leaderboard - 활발한 멤버 보기
@@ -83,6 +86,7 @@ Default group triggers:
 /chat sorun - Bota soru sor
 /ask sorun - /chat ile aynı
 /search sorun - Web aramasıyla yanıtla
+/copilot isteğiniz - Yöneticinin elle göndermesi için yanıt taslağı oluştur
 /news [anahtar kelimeler] - Rastgele birkaç haber gönder
 /poll soru | seçenek 1 | seçenek 2 - Anket oluştur
 /leaderboard - Aktif üyeleri göster
@@ -113,6 +117,12 @@ Varsayılan grup tetikleyicileri:
         "en": "Add a search question after the command, for example: /search latest AI industry news today",
         "ko": "명령 뒤에 검색 질문을 붙여 주세요. 예: /search 오늘 AI 업계 뉴스",
         "tr": "Komuttan sonra arama sorunuzu yazın. Örnek: /search bugün yapay zeka haberleri",
+    },
+    "copilot_after_command": {
+        "zh": "请在命令后面加草稿需求，例如：/copilot 根据刚才讨论写一句自然回复",
+        "en": "Add a drafting request after the command, for example: /copilot write a natural reply based on the recent discussion",
+        "ko": "명령 뒤에 초안 요청을 붙여 주세요. 예: /copilot 방금 논의에 맞는 자연스러운 답변 작성",
+        "tr": "Komuttan sonra taslak isteğinizi yazın. Örnek: /copilot son tartışmaya göre doğal bir yanıt yaz",
     },
     "empty_prompt": {
         "zh": "你想问什么？",
@@ -168,6 +178,30 @@ Varsayılan grup tetikleyicileri:
         "ko": "토론: 이 뉴스에서 가장 주목할 점은 무엇인가요?",
         "tr": "Tartışma: Bu haberde en önemli nokta nedir?",
     },
+    "channel_news_sent": {
+        "zh": "已发送到频道。",
+        "en": "Sent to the channel.",
+        "ko": "채널로 보냈습니다.",
+        "tr": "Kanala gönderildi.",
+    },
+    "copilot_draft_header": {
+        "zh": "AI 副驾驶草稿\n来源 chat_id: {chat_id}\n来源用户: {user_name}",
+        "en": "AI copilot draft\nSource chat_id: {chat_id}\nSource user: {user_name}",
+        "ko": "AI 코파일럿 초안\n출처 chat_id: {chat_id}\n사용자: {user_name}",
+        "tr": "AI copilotu taslağı\nKaynak chat_id: {chat_id}\nKaynak kullanıcı: {user_name}",
+    },
+    "copilot_sent": {
+        "zh": "已把草稿发给管理员。",
+        "en": "Draft sent to the admin.",
+        "ko": "초안을 관리자에게 보냈습니다.",
+        "tr": "Taslak yöneticiye gönderildi.",
+    },
+    "copilot_target_missing": {
+        "zh": "请先在 .env 设置 COPILOT_ADMIN_CHAT_ID，并让该管理员先私聊启动机器人。",
+        "en": "Set COPILOT_ADMIN_CHAT_ID in .env first, and have that admin start a private chat with the bot.",
+        "ko": ".env에 COPILOT_ADMIN_CHAT_ID를 먼저 설정하고, 해당 관리자가 봇과 개인 채팅을 시작해야 합니다.",
+        "tr": "Önce .env içinde COPILOT_ADMIN_CHAT_ID ayarlayın ve bu yöneticinin botla özel sohbet başlatmasını sağlayın.",
+    },
     "leaderboard_header": {
         "zh": "近 {days} 天活跃榜：",
         "en": "Active members in the last {days} days:",
@@ -211,10 +245,10 @@ Varsayılan grup tetikleyicileri:
         "tr": "Bu modele izin verilmiyor: {model}\nKullanılabilir modeller: {models}",
     },
     "config_status": {
-        "zh": "当前配置：\nchat_id: {chat_id}\n语言：{language}\n模型：{model}\n触发模式：{trigger_mode}\n主动回复：{autonomous_reply}\n定时新闻：{news_enabled}\nAI 额度：{ai_quota}\n\n可用命令：\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 模型名\n/config model reset",
-        "en": "Current settings:\nchat_id: {chat_id}\nLanguage: {language}\nModel: {model}\nTrigger mode: {trigger_mode}\nAutonomous reply: {autonomous_reply}\nScheduled news: {news_enabled}\nAI quota: {ai_quota}\n\nCommands:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-name\n/config model reset",
-        "ko": "현재 설정:\nchat_id: {chat_id}\n언어: {language}\n모델: {model}\n호출 모드: {trigger_mode}\n자율 응답: {autonomous_reply}\n예약 뉴스: {news_enabled}\nAI 한도: {ai_quota}\n\n명령:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 모델명\n/config model reset",
-        "tr": "Mevcut ayarlar:\nchat_id: {chat_id}\nDil: {language}\nModel: {model}\nTetikleme modu: {trigger_mode}\nOtonom yanıt: {autonomous_reply}\nPlanlı haber: {news_enabled}\nAI kotası: {ai_quota}\n\nKomutlar:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-adı\n/config model reset",
+        "zh": "当前配置：\nchat_id: {chat_id}\n语言：{language}\n模型：{model}\n发布模式：{post_mode}\n触发模式：{trigger_mode}\n主动回复：{autonomous_reply}\n定时新闻：{news_enabled}\nAI 额度：{ai_quota}\n\n可用命令：\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 模型名\n/config model reset",
+        "en": "Current settings:\nchat_id: {chat_id}\nLanguage: {language}\nModel: {model}\nPost mode: {post_mode}\nTrigger mode: {trigger_mode}\nAutonomous reply: {autonomous_reply}\nScheduled news: {news_enabled}\nAI quota: {ai_quota}\n\nCommands:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-name\n/config model reset",
+        "ko": "현재 설정:\nchat_id: {chat_id}\n언어: {language}\n모델: {model}\n게시 모드: {post_mode}\n호출 모드: {trigger_mode}\n자율 응답: {autonomous_reply}\n예약 뉴스: {news_enabled}\nAI 한도: {ai_quota}\n\n명령:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model 모델명\n/config model reset",
+        "tr": "Mevcut ayarlar:\nchat_id: {chat_id}\nDil: {language}\nModel: {model}\nGönderi modu: {post_mode}\nTetikleme modu: {trigger_mode}\nOtonom yanıt: {autonomous_reply}\nPlanlı haber: {news_enabled}\nAI kotası: {ai_quota}\n\nKomutlar:\n/config language auto|zh|en|ko|tr\n/config language reset\n/config model model-adı\n/config model reset",
     },
     "config_language_current": {
         "zh": "当前语言配置：{language}",

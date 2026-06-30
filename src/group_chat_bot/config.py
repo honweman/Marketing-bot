@@ -47,6 +47,11 @@ def parse_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def parse_optional_int(value: str) -> int | None:
+    value = value.strip()
+    return int(value) if value else None
+
+
 @dataclass(frozen=True)
 class Settings:
     telegram_bot_token: str
@@ -59,6 +64,10 @@ class Settings:
     database_path: Path
     system_prompt: str
     max_context_messages: int
+    post_mode: str
+    target_channel_id: int | None
+    discussion_group_id: int | None
+    copilot_admin_chat_id: int | None
     poll_timeout_seconds: int
     mock_ai: bool
     store_passive_messages: bool
@@ -109,6 +118,9 @@ class Settings:
         news_card_mode = os.getenv("NEWS_CARD_MODE", "card").strip().lower()
         if news_card_mode not in {"links", "card"}:
             raise RuntimeError("NEWS_CARD_MODE must be links or card")
+        post_mode = os.getenv("POST_MODE", "bot").strip().lower()
+        if post_mode not in {"bot", "channel", "copilot"}:
+            raise RuntimeError("POST_MODE must be one of bot, channel, copilot")
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
         openai_allowed_models = parse_csv(os.getenv("OPENAI_ALLOWED_MODELS", ""))
         if not openai_allowed_models:
@@ -130,6 +142,10 @@ class Settings:
                 "你是一个在 Telegram 群里工作的中文 AI 助手。回答要简洁、直接、可执行；不知道就说不知道。",
             ),
             max_context_messages=int(os.getenv("MAX_CONTEXT_MESSAGES", "12")),
+            post_mode=post_mode,
+            target_channel_id=parse_optional_int(os.getenv("TARGET_CHANNEL_ID", "")),
+            discussion_group_id=parse_optional_int(os.getenv("DISCUSSION_GROUP_ID", "")),
+            copilot_admin_chat_id=parse_optional_int(os.getenv("COPILOT_ADMIN_CHAT_ID", "")),
             poll_timeout_seconds=int(os.getenv("POLL_TIMEOUT_SECONDS", "30")),
             mock_ai=os.getenv("MOCK_AI", "0").strip() == "1",
             store_passive_messages=os.getenv("STORE_PASSIVE_MESSAGES", "1").strip() == "1",
@@ -144,7 +160,7 @@ class Settings:
             ai_global_daily_limit=int(os.getenv("AI_GLOBAL_DAILY_LIMIT", "0")),
             admin_user_ids=parse_int_set(os.getenv("ADMIN_USER_IDS", "")),
             admin_only_commands={
-                command.lower() for command in parse_csv(os.getenv("ADMIN_ONLY_COMMANDS", "config,model,news,poll"))
+                command.lower() for command in parse_csv(os.getenv("ADMIN_ONLY_COMMANDS", "config,model,news,poll,copilot"))
             },
             news_enabled=os.getenv("NEWS_ENABLED", "0").strip() == "1",
             news_chat_ids=parse_int_set(os.getenv("NEWS_CHAT_IDS", "")),

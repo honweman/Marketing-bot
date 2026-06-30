@@ -18,6 +18,7 @@ def test_parse_command_with_username():
     assert parse_command("/chat@my_bot hello", "my_bot") == ("chat", "hello")
     assert parse_command("/chat@other_bot hello", "my_bot") == (None, "")
     assert parse_command("/search latest AI news", "my_bot") == ("search", "latest AI news")
+    assert parse_command("/copilot write a reply", "my_bot") == ("copilot", "write a reply")
     assert parse_command("/news AI, crypto", "my_bot") == ("news", "AI, crypto")
     assert parse_command("/poll A? | Yes | No", "my_bot") == ("poll", "A? | Yes | No")
     assert parse_command("/leaderboard", "my_bot") == ("leaderboard", "")
@@ -396,3 +397,146 @@ def test_ai_chat_quota_blocks_after_limit(tmp_path):
 
     assert bot.telegram.messages[0]["text"] == "reply:first:gpt-4.1-mini"
     assert "AI request quota is exhausted" in bot.telegram.messages[-1]["text"]
+
+
+def test_channel_post_mode_sends_news_to_target_channel(tmp_path, monkeypatch):
+    from group_chat_bot import bot as bot_module
+    from group_chat_bot.news import NewsItem
+
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+
+        def send_message(self, chat_id, text, reply_to_message_id=None, parse_mode=None):
+            self.messages.append(
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": reply_to_message_id,
+                }
+            )
+
+    monkeypatch.setattr(
+        bot_module,
+        "fetch_random_news",
+        lambda feeds, keywords, count: [
+            NewsItem(
+                title="Market update",
+                link="https://example.com/news",
+                source="Example",
+                published="",
+                summary="Summary",
+            )
+        ],
+    )
+
+    settings = SimpleNamespace(
+        openai_model="gpt-4.1-mini",
+        openai_allowed_models=["gpt-4.1-mini"],
+        bot_username="my_bot",
+        default_language="en",
+        chat_language_mode="fixed",
+        chat_language_overrides={},
+        max_context_messages=12,
+        news_rss_feeds=["https://example.com/rss"],
+        news_count=1,
+        news_keywords=[],
+        news_card_mode="links",
+        news_ai_summary=False,
+        news_with_poll=False,
+        news_discussion_map={},
+        target_channel_id=-100222,
+        discussion_group_id=None,
+        post_mode="channel",
+    )
+    bot = GroupChatBot(
+        settings=settings,
+        telegram=FakeTelegram(),
+        ai=object(),
+        store=ConversationStore(tmp_path / "bot.sqlite3"),
+    )
+    message = IncomingMessage(
+        chat_id=-1001,
+        chat_type="supergroup",
+        message_id=1,
+        text="/news",
+        user_name="alice",
+        reply_to_bot=False,
+        user_id=7,
+    )
+
+    bot.handle_news_command(message, "news", "", "en")
+
+    assert bot.telegram.messages[0]["chat_id"] == -100222
+    assert "Market update" in bot.telegram.messages[0]["text"]
+    assert bot.telegram.messages[-1]["chat_id"] == -1001
+    assert bot.telegram.messages[-1]["text"] == "Sent to the channel."
+
+
+def test_copilot_mode_sends_draft_to_admin(tmp_path):
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+            self.actions = []
+
+        def send_message(self, chat_id, text, reply_to_message_id=None, parse_mode=None):
+            self.messages.append(
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": reply_to_message_id,
+                }
+            )
+
+        def send_chat_action(self, chat_id, action="typing"):
+            self.actions.append({"chat_id": chat_id, "action": action})
+
+    class FakeAI:
+        def reply(self, prompt, context, use_web_search=False, language="en", model=None):
+            return "This is a manual draft."
+
+    settings = SimpleNamespace(
+        openai_model="gpt-4.1-mini",
+        openai_allowed_models=["gpt-4.1-mini"],
+        bot_username="my_bot",
+        allowed_chat_ids=set(),
+        store_passive_messages=False,
+        autonomous_reply=False,
+        trigger_mode="mention_or_reply",
+        default_language="en",
+        chat_language_mode="fixed",
+        chat_language_overrides={},
+        max_context_messages=12,
+        admin_only_commands=set(),
+        admin_user_ids=set(),
+        mock_ai=False,
+        ai_chat_hourly_limit=0,
+        ai_chat_daily_limit=0,
+        ai_global_hourly_limit=0,
+        ai_global_daily_limit=0,
+        post_mode="copilot",
+        copilot_admin_chat_id=777,
+    )
+    bot = GroupChatBot(
+        settings=settings,
+        telegram=FakeTelegram(),
+        ai=FakeAI(),
+        store=ConversationStore(tmp_path / "bot.sqlite3"),
+    )
+
+    bot.handle_update(
+        {
+            "message": {
+                "message_id": 1,
+                "text": "/chat write a reply",
+                "chat": {"id": -1001, "type": "supergroup"},
+                "from": {"id": 7, "username": "alice"},
+            }
+        }
+    )
+
+    assert bot.telegram.messages[0]["chat_id"] == 777
+    assert "AI copilot draft" in bot.telegram.messages[0]["text"]
+    assert "This is a manual draft." in bot.telegram.messages[0]["text"]
+    assert bot.telegram.messages[1]["chat_id"] == -1001
+    assert bot.telegram.messages[1]["text"] == "Draft sent to the admin."

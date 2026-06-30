@@ -106,6 +106,9 @@ class GroupChatBot:
 
         prompt = self.extract_prompt(message)
         if prompt:
+            if self.post_mode() == "copilot":
+                self.send_copilot_draft(message, prompt, notify_source=False)
+                return
             self.answer(message, prompt)
             return
 
@@ -113,6 +116,9 @@ class GroupChatBot:
             self.store.add_message(message.chat_id, "user", message.text, user_name=message.user_name)
 
         if self.should_autonomously_reply(message):
+            if self.post_mode() == "copilot":
+                self.send_copilot_draft(message, message.text, store_user=False, notify_source=False)
+                return
             self.answer(message, message.text, store_user=False)
 
     def handle_command(self, message: IncomingMessage, command: str, arg: str) -> None:
@@ -148,16 +154,48 @@ class GroupChatBot:
         if not arg:
             self.telegram.send_message(message.chat_id, localize("ask_after_command", language), reply_to_message_id=message.message_id)
             return
+        if self.post_mode() == "copilot":
+            self.send_copilot_draft(message, arg, reply_to_message_id=message.message_id)
+            return
         self.answer(message, arg)
 
     def handle_search_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
         if not arg:
             self.telegram.send_message(message.chat_id, localize("search_after_command", language), reply_to_message_id=message.message_id)
             return
+        if self.post_mode() == "copilot":
+            self.send_copilot_draft(message, arg, use_web_search=True, reply_to_message_id=message.message_id)
+            return
         self.answer(message, arg, use_web_search=True)
 
+    def handle_copilot_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        if not arg:
+            self.telegram.send_message(message.chat_id, localize("copilot_after_command", language), reply_to_message_id=message.message_id)
+            return
+        use_web_search = arg.lower().startswith("search ")
+        prompt = arg[7:].strip() if use_web_search else arg
+        self.send_copilot_draft(
+            message,
+            prompt,
+            use_web_search=use_web_search,
+            reply_to_message_id=message.message_id,
+        )
+
     def handle_news_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
-        self.send_news(message.chat_id, reply_to_message_id=message.message_id, keywords=split_keywords(arg))
+        target_chat_id = self.news_command_target_chat_id(message.chat_id)
+        self.send_news(
+            target_chat_id,
+            reply_to_message_id=None if target_chat_id != message.chat_id else message.message_id,
+            keywords=split_keywords(arg),
+            source_chat_id=message.chat_id,
+        )
+        if target_chat_id != message.chat_id:
+            key = "copilot_sent" if self.post_mode() == "copilot" else "channel_news_sent"
+            self.telegram.send_message(
+                message.chat_id,
+                localize(key, language),
+                reply_to_message_id=message.message_id,
+            )
 
     def handle_poll_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
         self.send_manual_poll(message, arg, language)
@@ -283,10 +321,17 @@ class GroupChatBot:
         self.store.add_message(message.chat_id, "assistant", reply)
         self.telegram.send_message(message.chat_id, reply, reply_to_message_id=message.message_id)
 
-    def send_news(self, chat_id: int, reply_to_message_id: int | None = None, keywords: list[str] | None = None) -> None:
+    def send_news(
+        self,
+        chat_id: int,
+        reply_to_message_id: int | None = None,
+        keywords: list[str] | None = None,
+        source_chat_id: int | None = None,
+    ) -> None:
+        source_chat_id = source_chat_id if source_chat_id is not None else chat_id
         keywords = keywords if keywords is not None else self.settings.news_keywords
         items = fetch_random_news(self.settings.news_rss_feeds, keywords, self.settings.news_count)
-        language = self.language_for_chat(chat_id)
+        language = self.language_for_chat(source_chat_id)
         if not items:
             self.telegram.send_message(chat_id, format_news(items, language=language), reply_to_message_id=reply_to_message_id)
             return
@@ -294,9 +339,9 @@ class GroupChatBot:
         if self.settings.news_card_mode == "links":
             self.telegram.send_message(chat_id, format_news(items, language=language), reply_to_message_id=reply_to_message_id)
         else:
-            model = self.model_for_chat(chat_id)
+            model = self.model_for_chat(source_chat_id)
             for index, item in enumerate(items):
-                card = self.build_news_card(item, language, model, chat_id)
+                card = self.build_news_card(item, language, model, source_chat_id)
                 self.telegram.send_message(
                     chat_id,
                     card,
@@ -306,7 +351,7 @@ class GroupChatBot:
         if self.settings.news_with_poll:
             self.send_default_poll(chat_id, language)
 
-        discussion_chat_id = self.settings.news_discussion_map.get(chat_id)
+        discussion_chat_id = self.discussion_chat_id_for(chat_id)
         if discussion_chat_id is not None:
             first = items[0]
             prompt = f"{localize('discussion_prompt', language)}\n\n{first.title}\n{first.link}"
@@ -322,6 +367,117 @@ class GroupChatBot:
         except Exception:
             logger.exception("AI news card failed")
             return format_news_card(item, language=language)
+
+    def send_copilot_draft(
+        self,
+        message: IncomingMessage,
+        prompt: str,
+        use_web_search: bool = False,
+        store_user: bool = True,
+        reply_to_message_id: int | None = None,
+        notify_source: bool = True,
+    ) -> None:
+        target_chat_id = self.copilot_target_chat_id(message)
+        language = self.language_for_chat(message.chat_id, latest_text=prompt)
+        if target_chat_id is None:
+            if notify_source:
+                self.telegram.send_message(
+                    message.chat_id,
+                    localize("copilot_target_missing", language),
+                    reply_to_message_id=reply_to_message_id,
+                )
+            return
+
+        context = self.store.recent_messages(message.chat_id, self.settings.max_context_messages)
+        language = self.language_for_chat(message.chat_id, latest_text=prompt, context=context)
+        model = self.model_for_chat(message.chat_id)
+        purpose = "copilot_search" if use_web_search else "copilot"
+        if not self.reserve_ai_request(
+            message.chat_id,
+            message.user_id,
+            purpose=purpose,
+            model=model,
+            language=language,
+            reply_to_message_id=reply_to_message_id,
+            notify=notify_source,
+        ):
+            return
+
+        if store_user:
+            self.store.add_message(message.chat_id, "user", prompt, user_name=message.user_name)
+
+        copilot_prompt = (
+            "Write one concise Telegram reply draft for a human community manager to send manually. "
+            "Use the recent context, keep the tone natural, and output only the message body without explanations. "
+            "Do not claim to be a bot or a fake person.\n\n"
+            f"Draft request: {prompt}"
+        )
+        self.telegram.send_chat_action(target_chat_id)
+        try:
+            draft = self.ai.reply(
+                copilot_prompt,
+                context,
+                use_web_search=use_web_search,
+                language=language,
+                model=model,
+            )
+        except Exception:
+            logger.exception("Copilot draft failed")
+            if notify_source:
+                self.telegram.send_message(
+                    message.chat_id,
+                    localize("ai_failed", language),
+                    reply_to_message_id=reply_to_message_id,
+                )
+            return
+
+        header = localize("copilot_draft_header", language).format(
+            chat_id=message.chat_id,
+            user_name=message.user_name,
+        )
+        try:
+            self.telegram.send_message(target_chat_id, f"{header}\n\n{draft}")
+        except TelegramAPIError:
+            logger.exception("Could not send copilot draft to chat_id=%s", target_chat_id)
+            if notify_source:
+                self.telegram.send_message(
+                    message.chat_id,
+                    localize("copilot_target_missing", language),
+                    reply_to_message_id=reply_to_message_id,
+                )
+            return
+
+        if notify_source and target_chat_id != message.chat_id:
+            self.telegram.send_message(
+                message.chat_id,
+                localize("copilot_sent", language),
+                reply_to_message_id=reply_to_message_id,
+            )
+
+    def copilot_target_chat_id(self, message: IncomingMessage) -> int | None:
+        target = getattr(self.settings, "copilot_admin_chat_id", None)
+        if target is not None:
+            return target
+        if message.chat_type == "private":
+            return message.chat_id
+        return None
+
+    def discussion_chat_id_for(self, chat_id: int) -> int | None:
+        discussion_map = getattr(self.settings, "news_discussion_map", {})
+        discussion_chat_id = discussion_map.get(chat_id)
+        if discussion_chat_id is not None:
+            return discussion_chat_id
+        if chat_id == getattr(self.settings, "target_channel_id", None):
+            return getattr(self.settings, "discussion_group_id", None)
+        return None
+
+    def news_command_target_chat_id(self, current_chat_id: int) -> int:
+        mode = self.post_mode()
+        if mode == "channel":
+            return getattr(self.settings, "target_channel_id", None) or current_chat_id
+        if mode == "copilot":
+            return getattr(self.settings, "copilot_admin_chat_id", None) or current_chat_id
+        return current_chat_id
 
     def send_default_poll(self, chat_id: int, language: str) -> None:
         question = localize("poll_question", language)
@@ -384,6 +540,7 @@ class GroupChatBot:
             chat_id=chat_id,
             language=self.configured_language_label(chat_id),
             model=self.model_for_chat(chat_id),
+            post_mode=self.post_mode_label(),
             trigger_mode=self.settings.trigger_mode,
             autonomous_reply=format_bool(self.settings.autonomous_reply),
             news_enabled=format_bool(self.settings.news_enabled),
@@ -558,17 +715,42 @@ class GroupChatBot:
             parts.append(f"global {global_daily}/day")
         return ", ".join(parts) if parts else "off"
 
+    def post_mode(self) -> str:
+        mode = getattr(self.settings, "post_mode", "bot")
+        return mode if mode in {"bot", "channel", "copilot"} else "bot"
+
+    def post_mode_label(self) -> str:
+        mode = self.post_mode()
+        if mode == "channel":
+            target = getattr(self.settings, "target_channel_id", None)
+            return f"channel ({target})" if target is not None else "channel (missing TARGET_CHANNEL_ID)"
+        if mode == "copilot":
+            target = getattr(self.settings, "copilot_admin_chat_id", None)
+            return f"copilot ({target})" if target is not None else "copilot (missing COPILOT_ADMIN_CHAT_ID)"
+        return "bot"
+
+    def scheduled_news_chat_ids(self) -> list[int]:
+        mode = self.post_mode()
+        if mode == "channel":
+            target = getattr(self.settings, "target_channel_id", None)
+            return [target] if target is not None else []
+        if mode == "copilot":
+            target = getattr(self.settings, "copilot_admin_chat_id", None)
+            return [target] if target is not None else []
+        target_chat_ids = self.settings.news_chat_ids or self.settings.allowed_chat_ids
+        return sorted(target_chat_ids)
+
     def start_news_scheduler(self) -> None:
         if not self.settings.news_enabled:
             return
-        target_chat_ids = self.settings.news_chat_ids or self.settings.allowed_chat_ids
+        target_chat_ids = self.scheduled_news_chat_ids()
         if not target_chat_ids:
-            logger.warning("NEWS_ENABLED=1 but NEWS_CHAT_IDS and ALLOWED_CHAT_IDS are empty; scheduler disabled")
+            logger.warning("NEWS_ENABLED=1 but no target chat is configured for POST_MODE=%s; scheduler disabled", self.post_mode())
             return
 
-        thread = threading.Thread(target=self.news_loop, args=(sorted(target_chat_ids),), daemon=True)
+        thread = threading.Thread(target=self.news_loop, args=(target_chat_ids,), daemon=True)
         thread.start()
-        logger.info("News scheduler enabled for %s", sorted(target_chat_ids))
+        logger.info("News scheduler enabled for %s", target_chat_ids)
 
     def news_loop(self, chat_ids: list[int]) -> None:
         interval = max(5, self.settings.news_interval_minutes) * 60

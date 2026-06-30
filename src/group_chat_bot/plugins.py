@@ -55,6 +55,14 @@ def build_default_plugins() -> list[CommandPlugin]:
             description="AI replies with web search.",
         ),
         CommandPlugin(
+            name="copilot",
+            commands=("copilot",),
+            handler=lambda bot, message, command, arg, language: bot.handle_copilot_command(
+                message, command, arg, language
+            ),
+            description="Human-in-the-loop AI drafts for administrators.",
+        ),
+        CommandPlugin(
             name="news",
             commands=("news",),
             handler=lambda bot, message, command, arg, language: bot.handle_news_command(
