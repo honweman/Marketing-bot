@@ -6,12 +6,13 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Collection
 
 from .ai import AIResponder
 from .config import Settings
 from .language import detect_language, detect_language_from_messages, localize
 from .news import NewsItem, fetch_random_news, format_news, format_news_card
+from .plugins import DEFAULT_COMMANDS, CommandPlugin, build_default_plugins, command_index
 from .storage import ConversationStore
 from .telegram_api import TelegramAPIError, TelegramClient, retry_sleep
 
@@ -45,11 +46,14 @@ class GroupChatBot:
         telegram: TelegramClient,
         ai: AIResponder,
         store: ConversationStore,
+        plugins: list[CommandPlugin] | None = None,
     ):
         self.settings = settings
         self.telegram = telegram
         self.ai = ai
         self.store = store
+        self.plugins = plugins if plugins is not None else build_default_plugins()
+        self.command_handlers = command_index(self.plugins)
         self.bot_username = settings.bot_username
         self.last_autonomous_reply_at: dict[int, float] = {}
         self.autonomous_reply_times: dict[int, deque[float]] = defaultdict(deque)
@@ -94,7 +98,7 @@ class GroupChatBot:
         if message.is_group:
             self.store.record_activity(message.chat_id, message.user_id, message.user_name)
 
-        command, command_arg = parse_command(message.text, self.bot_username or "")
+        command, command_arg = parse_command(message.text, self.bot_username or "", self.command_handlers.keys())
         if command:
             self.handle_command(message, command, command_arg)
             return
@@ -112,6 +116,12 @@ class GroupChatBot:
 
     def handle_command(self, message: IncomingMessage, command: str, arg: str) -> None:
         language = self.language_for_chat(message.chat_id, latest_text=arg)
+        plugin = self.command_handlers.get(command)
+        if plugin is None:
+            return
+        plugin.handle(self, message, command, arg, language)
+
+    def handle_core_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
         if command in {"start", "help"}:
             self.telegram.send_message(message.chat_id, localize("help", language), reply_to_message_id=message.message_id)
             return
@@ -125,33 +135,33 @@ class GroupChatBot:
         if command == "privacy":
             self.telegram.send_message(message.chat_id, localize("privacy", language), reply_to_message_id=message.message_id)
             return
-        if command in {"chat", "ask"}:
-            if not arg:
-                self.telegram.send_message(message.chat_id, localize("ask_after_command", language), reply_to_message_id=message.message_id)
-                return
-            self.answer(message, arg)
+
+    def handle_chat_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        if not arg:
+            self.telegram.send_message(message.chat_id, localize("ask_after_command", language), reply_to_message_id=message.message_id)
             return
-        if command == "search":
-            if not arg:
-                self.telegram.send_message(message.chat_id, localize("search_after_command", language), reply_to_message_id=message.message_id)
-                return
-            self.answer(message, arg, use_web_search=True)
+        self.answer(message, arg)
+
+    def handle_search_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        if not arg:
+            self.telegram.send_message(message.chat_id, localize("search_after_command", language), reply_to_message_id=message.message_id)
             return
-        if command == "news":
-            self.send_news(message.chat_id, reply_to_message_id=message.message_id, keywords=split_keywords(arg))
-            return
-        if command == "poll":
-            self.send_manual_poll(message, arg, language)
-            return
-        if command == "leaderboard":
-            self.send_leaderboard(message.chat_id, reply_to_message_id=message.message_id)
-            return
+        self.answer(message, arg, use_web_search=True)
+
+    def handle_news_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        self.send_news(message.chat_id, reply_to_message_id=message.message_id, keywords=split_keywords(arg))
+
+    def handle_poll_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        self.send_manual_poll(message, arg, language)
+
+    def handle_leaderboard_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
+        self.send_leaderboard(message.chat_id, reply_to_message_id=message.message_id)
+
+    def handle_model_plugin_command(self, message: IncomingMessage, command: str, arg: str, language: str) -> None:
         if command == "models":
             self.send_model_list(message.chat_id, language, reply_to_message_id=message.message_id)
             return
-        if command == "model":
-            self.handle_model_command(message, arg, language)
-            return
+        self.handle_model_command(message, arg, language)
 
     def extract_prompt(self, message: IncomingMessage) -> str | None:
         text = message.text.strip()
@@ -428,7 +438,11 @@ def parse_message(update: dict[str, Any], bot_username: str) -> IncomingMessage 
     )
 
 
-def parse_command(text: str, bot_username: str) -> tuple[str | None, str]:
+def parse_command(
+    text: str,
+    bot_username: str,
+    known_commands: Collection[str] | None = DEFAULT_COMMANDS,
+) -> tuple[str | None, str]:
     stripped = text.strip()
     if not stripped.startswith("/"):
         return None, ""
@@ -442,22 +456,7 @@ def parse_command(text: str, bot_username: str) -> tuple[str | None, str]:
         command = name
 
     command = command.lower()
-    known = {
-        "start",
-        "help",
-        "id",
-        "reset",
-        "privacy",
-        "chat",
-        "ask",
-        "search",
-        "news",
-        "poll",
-        "leaderboard",
-        "model",
-        "models",
-    }
-    if command not in known:
+    if known_commands is not None and command not in known_commands:
         return None, ""
     return command, rest.strip()
 

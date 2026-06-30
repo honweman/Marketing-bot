@@ -7,6 +7,7 @@
 - Telegram Bot API 长轮询，无需公网服务器即可先跑起来。
 - OpenAI AI 回复。
 - 可配置多个 GPT 模型，并按群/频道切换当前模型。
+- 插件式命令注册：新闻、投票、模型、搜索、活跃榜等命令可独立扩展。
 - 群聊触发规则：`mention_or_reply`、`always`、`command_only`。
 - SQLite 保存最近上下文。
 - 群白名单，避免机器人被拉到陌生群后被滥用。
@@ -132,6 +133,22 @@ OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-4.1,gpt-4o-mini
 ```
 
 `/model gpt-4.1` 会把当前群/频道后续 AI 回复、`/search`、自主回复判断、AI 新闻卡片都切到该模型。`/model reset` 恢复 `.env` 里的 `OPENAI_MODEL`。
+
+## 插件式命令
+
+命令入口集中在 `src/group_chat_bot/plugins.py`。默认插件包括：
+
+| 插件 | 命令 |
+| --- | --- |
+| `core` | `/start`、`/help`、`/id`、`/reset`、`/privacy` |
+| `chat` | `/chat`、`/ask` |
+| `search` | `/search` |
+| `news` | `/news` |
+| `poll` | `/poll` |
+| `leaderboard` | `/leaderboard` |
+| `model` | `/model`、`/models` |
+
+新增命令时，优先新增一个 `CommandPlugin`，再把业务方法放到 `GroupChatBot` 或独立模块里，避免继续堆大段命令分支。
 
 ## 自主回复和新闻
 

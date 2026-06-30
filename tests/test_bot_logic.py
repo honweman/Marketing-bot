@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from group_chat_bot.bot import GroupChatBot, IncomingMessage, parse_command, parse_message, parse_poll_args, split_keywords
+from group_chat_bot.plugins import DEFAULT_COMMANDS, CommandPlugin
 from group_chat_bot.storage import ConversationStore
 from group_chat_bot.telegram_api import TelegramClient
 
@@ -14,6 +15,9 @@ def test_parse_command_with_username():
     assert parse_command("/leaderboard", "my_bot") == ("leaderboard", "")
     assert parse_command("/models", "my_bot") == ("models", "")
     assert parse_command("/model gpt-4.1", "my_bot") == ("model", "gpt-4.1")
+    assert "news" in DEFAULT_COMMANDS
+    assert parse_command("/custom run", "my_bot") == (None, "")
+    assert parse_command("/custom run", "my_bot", {"custom"}) == ("custom", "run")
 
 
 def test_parse_message_reply_to_bot():
@@ -123,3 +127,48 @@ def test_model_command_persists_chat_model(tmp_path):
 
     bot.handle_model_command(message, "reset", "en")
     assert bot.model_for_chat(-1001) == "gpt-4.1-mini"
+
+
+def test_custom_plugin_command_routes_from_update(tmp_path):
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+
+        def send_message(self, chat_id, text, reply_to_message_id=None, parse_mode=None):
+            self.messages.append({"chat_id": chat_id, "text": text})
+
+    def handle_custom(bot, message, command, arg, language):
+        bot.telegram.send_message(message.chat_id, f"{command}:{arg}:{language}")
+
+    settings = SimpleNamespace(
+        bot_username="my_bot",
+        allowed_chat_ids=set(),
+        store_passive_messages=False,
+        autonomous_reply=False,
+        trigger_mode="mention_or_reply",
+        default_language="en",
+        chat_language_mode="fixed",
+        chat_language_overrides={},
+        max_context_messages=12,
+    )
+    plugin = CommandPlugin(name="custom", commands=("custom",), handler=handle_custom)
+    bot = GroupChatBot(
+        settings=settings,
+        telegram=FakeTelegram(),
+        ai=object(),
+        store=ConversationStore(tmp_path / "bot.sqlite3"),
+        plugins=[plugin],
+    )
+
+    bot.handle_update(
+        {
+            "message": {
+                "message_id": 1,
+                "text": "/custom hello",
+                "chat": {"id": -1001, "type": "supergroup"},
+                "from": {"id": 7, "username": "alice"},
+            }
+        }
+    )
+
+    assert bot.telegram.messages == [{"chat_id": -1001, "text": "custom:hello:en"}]
